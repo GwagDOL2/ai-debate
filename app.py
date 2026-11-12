@@ -43,9 +43,20 @@ def build_prompt(stance, name, topic, style):
 def debate_turn(my_history, my_prompt, heard):
     """상대의 말(heard)을 내 기록에 user_input 으로 붙여 보내고, 성공하면 내 답까지 기록에 남긴다 (11주차와 같음)"""
     send_list = my_history + [{"type": "user_input", "content": [{"type": "text", "text": heard}]}]
-    reply = client.interactions.create(model=MODEL_NAME, store=False, system_instruction=my_prompt, input=send_list)
-    my_history[:] = send_list + [step.model_dump() for step in reply.steps]
-    return reply.output_text
+    said = None
+    for attempt in range(2):                    # 모델이 빈 답을 주면 한 번만 다시 요청
+        reply = client.interactions.create(model=MODEL_NAME, store=False, system_instruction=my_prompt, input=send_list)
+        try:
+            said = reply.output_text
+        except TypeError:                       # 답이 비어 steps 가 없을 때
+            said = None
+        if said:
+            break
+    if not said:
+        raise RuntimeError("모델이 빈 답을 돌려줬습니다 — [▶ 토론 시작] 을 다시 눌러 보세요")
+    steps = [step.model_dump() for step in (reply.steps or [])]
+    my_history[:] = send_list + (steps or [{"type": "model_output", "content": [{"type": "text", "text": said}]}])
+    return said
 
 
 def explain_error(error):
